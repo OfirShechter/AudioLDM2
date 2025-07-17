@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from functools import partial
 from tqdm import tqdm
 from torchvision.utils import make_grid
+# from .....AudioLDM.audioldm.audio.stft import TacotronSTFT
 from audioldm2.latent_diffusion.modules.encoders.modules import *
 
 from audioldm2.latent_diffusion.util import (
@@ -598,6 +599,68 @@ class DDPM(nn.Module):
 
 
 class LatentDiffusion(DDPM):
+    def audio_to_mel(self, audio_tensor, fn_STFT):
+        """
+        Convert waveform tensor to mel spectrogram using first_stage_model.
+        Args:
+            audio_tensor: torch.Tensor, shape [batch, samples]
+        Returns:
+            mel: torch.Tensor, shape [batch, time, mel_bins]
+        """
+        # If first_stage_model has audio_to_mel, use it; else fallback to STFT
+        if hasattr(self.first_stage_model, 'audio_to_mel'):
+            return self.first_stage_model.audio_to_mel(audio_tensor)
+        else:
+            # Fallback: use TacotronSTFT from config
+            cfg = self.first_stage_model.config if hasattr(self.first_stage_model, 'config') else None
+            if cfg:
+                # fn_STFT = TacotronSTFT(
+                #     cfg["filter_length"],
+                #     cfg["hop_length"],
+                #     cfg["win_length"],
+                #     cfg["n_mel_channels"],
+                #     cfg["sampling_rate"],
+                #     cfg["mel_fmin"],
+                #     cfg["mel_fmax"],
+                # )
+                mel = fn_STFT.mel_spectrogram(audio_tensor)
+                return mel
+            else:
+                raise NotImplementedError("audio_to_mel not implemented for this first_stage_model")
+
+    def mel_to_audio(self, mel_tensor):
+        """
+        Convert mel spectrogram to waveform using vocoder.
+        Args:
+            mel_tensor: torch.Tensor, shape [batch, time, mel_bins]
+        Returns:
+            audio: np.ndarray, shape [batch, samples]
+        """
+        return self.mel_spectrogram_to_waveform(mel_tensor, save=False)
+
+    def encode_audio_to_latent(self, audio_tensor):
+        """
+        Deterministically encode audio to latent space.
+        Args:
+            audio_tensor: torch.Tensor, shape [batch, samples]
+        Returns:
+            latent: torch.Tensor
+        """
+        mel = self.audio_to_mel(audio_tensor)
+        latent = self.encode_first_stage(mel)
+        return latent
+
+    def decode_latent_to_audio(self, latent_tensor):
+        """
+        Deterministically decode latent tensor to audio.
+        Args:
+            latent_tensor: torch.Tensor
+        Returns:
+            audio: np.ndarray
+        """
+        mel = self.decode_first_stage(latent_tensor)
+        audio = self.mel_to_audio(mel)
+        return audio
     """main class"""
 
     def __init__(

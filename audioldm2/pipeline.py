@@ -13,6 +13,77 @@ from audioldm2.utilities.audio.stft import TacotronSTFT
 from audioldm2.utilities.audio.tools import wav_to_fbank
 import os
 
+# --- Mel/audio/latent conversion utilities ---
+def audio_to_mel(model, audio_path):
+    # Get config from model
+    config = getattr(model, 'config', None)
+    if config is None and hasattr(model, 'default_audioldm_config'):
+        config = model.default_audioldm_config()
+    elif config is None:
+        config = default_audioldm_config()
+    stft_params = config["preprocessing"]["stft"]
+    mel_params = config["preprocessing"]["mel"]
+    audio_params = config["preprocessing"]["audio"]
+    fn_STFT = TacotronSTFT(
+        stft_params["filter_length"],
+        stft_params["hop_length"],
+        stft_params["win_length"],
+        mel_params["n_mel_channels"],
+        audio_params["sampling_rate"],
+        mel_params["mel_fmin"],
+        mel_params["mel_fmax"],
+    )
+    # Here, audio_tensor should be a file path (str) to the audio file
+    # For consistency, use wav_to_fbank
+    with torch.no_grad():
+        mel, _, _ = wav_to_fbank(audio_path, fn_STFT=fn_STFT)
+        # wav_to_fbank returns mel as [mel_bins, time], but some models expect [batch, mel_bins, time]
+        # For visualization, use mel.squeeze() or mel if shape is [1, mel_bins, time]
+    return mel
+
+def mel_to_audio(model, mel_tensor):
+    """
+    Convert mel spectrogram to waveform using model's vocoder.
+    Args:
+        model: LatentDiffusion instance
+        mel_tensor: torch.Tensor, shape [batch, time, mel_bins]
+    Returns:
+        audio: np.ndarray, shape [batch, samples]
+    """
+    with torch.no_grad():
+        audio = model.mel_spectrogram_to_waveform(mel_tensor, save=False)
+    return audio
+
+def audio_to_latent(model, mel):
+    """
+    Deterministically encode audio to latent space using model's encoder.
+    Args:
+        model: LatentDiffusion instance
+        audio_tensor: torch.Tensor, shape [batch, samples]
+    Returns:
+        latent: torch.Tensor
+    """
+    with torch.no_grad():
+        latent = model.encode_first_stage(mel)
+        # If the output is a DiagonalGaussianDistribution, return its mean
+        if hasattr(latent, 'mean'):
+            latent = latent.mean
+    return latent
+
+def latent_to_audio(model, latent_tensor):
+    """
+    Deterministically decode latent tensor to audio using model's decoder and vocoder.
+    Args:
+        model: LatentDiffusion instance
+        latent_tensor: torch.Tensor
+    Returns:
+        audio: np.ndarray
+    """
+    with torch.no_grad():
+        mel = model.decode_first_stage(latent_tensor)
+        audio = mel_to_audio(model, mel)
+    return audio
+
 # CACHE_DIR = os.getenv(
 #     "AUDIOLDM_CACHE_DIR", os.path.join(os.path.expanduser("~"), ".cache/audioldm2")
 # )
@@ -173,7 +244,7 @@ def build_model(ckpt_path=None, config=None, device=None, model_name="audioldm2-
 
     latent_diffusion.load_state_dict(checkpoint["state_dict"])
     
-    latent_diffusion.eval()
+    # latent_diffusion.eval()
     latent_diffusion = latent_diffusion.to(device)
     
     return latent_diffusion
