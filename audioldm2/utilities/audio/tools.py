@@ -25,14 +25,15 @@ def normalize_wav(waveform):
     return waveform * 0.5
 
 
-def read_wav_file(filename, segment_length):
+def read_wav_file(filename, segment_length, pad=False):
     # waveform, sr = librosa.load(filename, sr=None, mono=True) # 4 times slower
     waveform, sr = torchaudio.load(filename)  # Faster!!!
     waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=16000)
     waveform = waveform.numpy()[0, ...]
     waveform = normalize_wav(waveform)
     waveform = waveform[None, ...]
-    waveform = pad_wav(waveform, segment_length)
+    if pad:
+        waveform = pad_wav(waveform, segment_length)
 
     waveform = waveform / np.max(np.abs(waveform))
     waveform = 0.5 * waveform
@@ -83,11 +84,11 @@ def _pad_spec(fbank, target_length=1024):
 
     return fbank
 
-def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
+def wav_to_fbank(filename, target_length=1024, fn_STFT=None, pad=False):
     assert fn_STFT is not None
 
     # mixup
-    waveform = read_wav_file(filename, target_length * 160)  # hop size is 160
+    waveform = read_wav_file(filename, target_length * 160, pad=pad)  # hop size is 160
 
     waveform = waveform[0, ...]
     waveform = torch.FloatTensor(waveform)
@@ -97,8 +98,9 @@ def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
     fbank = torch.FloatTensor(fbank.T)
     log_magnitudes_stft = torch.FloatTensor(log_magnitudes_stft.T)
 
-    fbank, log_magnitudes_stft = _pad_spec(fbank, target_length), _pad_spec(
-        log_magnitudes_stft, target_length
-    )
+    if pad:
+        fbank, log_magnitudes_stft = _pad_spec(fbank, target_length), _pad_spec(
+            log_magnitudes_stft, target_length
+        )
 
     return fbank, log_magnitudes_stft, waveform
