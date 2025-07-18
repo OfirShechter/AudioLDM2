@@ -35,10 +35,9 @@ def audio_to_mel(model, audio_path):
     )
     # Here, audio_tensor should be a file path (str) to the audio file
     # For consistency, use wav_to_fbank
-    with torch.no_grad():
-        mel, _, _ = wav_to_fbank(audio_path, fn_STFT=fn_STFT)
-        # wav_to_fbank returns mel as [mel_bins, time], but some models expect [batch, mel_bins, time]
-        # For visualization, use mel.squeeze() or mel if shape is [1, mel_bins, time]
+    mel, _, _ = wav_to_fbank(audio_path, fn_STFT=fn_STFT)
+    # wav_to_fbank returns mel as [mel_bins, time], but some models expect [batch, mel_bins, time]
+    # For visualization, use mel.squeeze() or mel if shape is [1, mel_bins, time]
     return mel
 
 def mel_to_audio(model, mel_tensor):
@@ -50,8 +49,7 @@ def mel_to_audio(model, mel_tensor):
     Returns:
         audio: np.ndarray, shape [batch, samples]
     """
-    with torch.no_grad():
-        audio = model.mel_spectrogram_to_waveform(mel_tensor, save=False)
+    audio = model.mel_spectrogram_to_waveform(mel_tensor, save=False)
     return audio
 
 def audio_to_latent(model, mel):
@@ -63,11 +61,9 @@ def audio_to_latent(model, mel):
     Returns:
         latent: torch.Tensor
     """
-    with torch.no_grad():
-        latent = model.encode_first_stage(mel)
-        # If the output is a DiagonalGaussianDistribution, return its mean
-        if hasattr(latent, 'mean'):
-            latent = latent.mean
+    latent = model.encode_first_stage(mel)
+    # The output is a DiagonalGaussianDistribution, return its mean
+    latent = latent.mean
     return latent
 
 def latent_to_audio(model, latent_tensor):
@@ -223,7 +219,8 @@ def build_model(ckpt_path=None, config=None, device=None, model_name="audioldm2-
     print("Loading AudioLDM-2: %s" % model_name)
     print("Loading model on %s" % device)
 
-    ckpt_path = download_checkpoint(model_name)
+    if ckpt_path is None:
+        ckpt_path = download_checkpoint(model_name)
 
     if config is not None:
         assert type(config) is str
