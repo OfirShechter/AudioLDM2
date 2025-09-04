@@ -63,7 +63,7 @@ def audio_to_latent(model, mel):
     """
     latent = model.encode_first_stage(mel)
     # The output is a DiagonalGaussianDistribution, return its mean
-    latent = latent.mean
+    # latent = latent.mean
     return latent
 
 def latent_to_audio(model, latent_tensor):
